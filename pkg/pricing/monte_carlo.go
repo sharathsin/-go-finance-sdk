@@ -1,6 +1,7 @@
 package pricing
 
 import (
+	"context"
 	"math"
 	"math/rand"
 	"sync"
@@ -14,6 +15,7 @@ type MonteCarloPricer struct {
 	Simulations  int
 	RiskFreeRate float64
 	Volatility   float64
+	rngPool      sync.Pool
 }
 
 // NewMonteCarloPricer creates a new Monte Carlo pricer.
@@ -22,11 +24,16 @@ func NewMonteCarloPricer(sims int, r, sigma float64) *MonteCarloPricer {
 		Simulations:  sims,
 		RiskFreeRate: r,
 		Volatility:   sigma,
+		rngPool: sync.Pool{
+			New: func() interface{} {
+				return rand.New(rand.NewSource(time.Now().UnixNano()))
+			},
+		},
 	}
 }
 
 // Price calculates the price using concurrent simulations.
-func (mc *MonteCarloPricer) Price(inst instrument.Instrument) (float64, error) {
+func (mc *MonteCarloPricer) Price(ctx context.Context, inst instrument.Instrument) (float64, error) {
 	opt, ok := inst.(*instrument.Option)
 	if !ok {
 		return 0, nil
@@ -48,9 +55,23 @@ func (mc *MonteCarloPricer) Price(inst instrument.Instrument) (float64, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+			// Check context before starting
+			if ctx.Err() != nil {
+				return
+			}
+
+			// Get RNG from pool
+			rng := mc.rngPool.Get().(*rand.Rand)
+			defer mc.rngPool.Put(rng)
+
 			sumPayoff := 0.0
 			for j := 0; j < simsPerRoutine; j++ {
+				// Check context periodically (every 1000 sims or so) to avoid overhead
+				if j%1000 == 0 && ctx.Err() != nil {
+					return
+				}
+
 				z := rng.NormFloat64()
 				ST := S0 * math.Exp((r-0.5*sigma*sigma)*T+sigma*math.Sqrt(T)*z)
 				payoff := 0.0
@@ -71,6 +92,11 @@ func (mc *MonteCarloPricer) Price(inst instrument.Instrument) (float64, error) {
 
 	wg.Wait()
 	close(results)
+
+	// fast exit if cancelled
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 
 	totalPayoff := 0.0
 	for p := range results {

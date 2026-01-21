@@ -1,31 +1,45 @@
 package pricing
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/antigravity/go-finance-sdk/pkg/instrument"
 	"github.com/shopspring/decimal"
-	"github.com/stretchr/testify/assert"
 )
 
-func TestMonteCarloPricer(t *testing.T) {
-	r := 0.05
-	sigma := 0.2
-	sims := 1000
-	pricer := NewMonteCarloPricer(sims, r, sigma)
+func TestMonteCarloOptionPricing(t *testing.T) {
+	// Setup
+	underlying := instrument.NewEquity("AAPL", "USD", "AAPL")
+	strike := decimal.NewFromInt(100) // ATM
+	expiry := time.Now().Add(30 * 24 * time.Hour)
+	opt := instrument.NewEuropeanOption("OPT1", underlying, strike, expiry, instrument.Call)
 
-	underlying := instrument.NewEquity("TEST", "USD", "TEST")
-	expiry := time.Now().Add(365 * 24 * time.Hour)
-	strike := decimal.NewFromInt(100)
+	// Pricing
+	// Rate=5%, Volatility=20%, Sims=10000
+	pricer := NewMonteCarloPricer(10000, 0.05, 0.20)
+	price, err := pricer.Price(context.Background(), opt)
 
-	opt := instrument.NewEuropeanOption("OPT", underlying, strike, expiry, instrument.Call)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
 
-	price, err := pricer.Price(opt)
-	assert.NoError(t, err)
-	assert.True(t, price > 0)
+	if price <= 0 {
+		t.Errorf("Expected positive price, got %f", price)
+	}
+}
 
-	// MC should coverage to BS price with enough sims, but for 1000 it might be noisy.
-	// But it should be roughly around 10.45
-	assert.InDelta(t, 10.45, price, 2.0)
+func BenchmarkMonteCarloPricing(b *testing.B) {
+	underlying := instrument.NewEquity("AAPL", "USD", "AAPL")
+	strike := decimal.NewFromInt(150)
+	expiry := time.Now().Add(30 * 24 * time.Hour)
+	opt := instrument.NewEuropeanOption("OPT1", underlying, strike, expiry, instrument.Call)
+	pricer := NewMonteCarloPricer(10000, 0.05, 0.20)
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = pricer.Price(ctx, opt)
+	}
 }

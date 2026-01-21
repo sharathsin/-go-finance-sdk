@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	"github.com/shopspring/decimal"
 	"github.com/antigravity/go-finance-sdk/pkg/instrument"
 	"github.com/antigravity/go-finance-sdk/pkg/pricing"
 	"github.com/antigravity/go-finance-sdk/pkg/risk"
+	"github.com/shopspring/decimal"
 )
 
 func main() {
@@ -17,7 +18,7 @@ func main() {
 	strike := decimal.NewFromFloat(100.0)
 	expiry := time.Now().AddDate(0, 3, 0) // 3 months
 	underlying := instrument.NewEquity("AAPL", "USD", "AAPL")
-	
+
 	callOption := instrument.NewEuropeanOption("OPT-1", underlying, strike, expiry, instrument.Call)
 
 	fmt.Printf("Instrument: %s (%s) Strike: %s\n", callOption.ID(), callOption.OptionType(), callOption.Strike())
@@ -29,7 +30,7 @@ func main() {
 
 	// 3. Price using Monte Carlo (Concurrent)
 	mcPricer := pricing.NewMonteCarloPricer(100000, 0.05, 0.2)
-	mcPrice, _ := mcPricer.Price(callOption)
+	mcPrice, _ := mcPricer.Price(context.Background(), callOption)
 	fmt.Printf("Monte Carlo Price: %.4f (100k simulations)\n", mcPrice)
 
 	// 4. Calculate Risk (VaR)
