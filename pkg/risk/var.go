@@ -10,12 +10,12 @@ func CalculateHistoricalVaR(returns []float64, confidenceLevel float64, portfoli
 	if len(returns) == 0 {
 		return 0.0
 	}
-	
+
 	sortedReturns := make([]float64, len(returns))
 	copy(sortedReturns, returns)
 	sort.Float64s(sortedReturns)
 
-	index := int(float64(len(sortedReturns)) * (1.0 - confidenceLevel))
+	index := int(float64(len(sortedReturns))*(1.0-confidenceLevel) + 1e-9)
 	if index < 0 {
 		index = 0
 	}
